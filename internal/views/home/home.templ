@@ -1,0 +1,27 @@
+package home
+
+import "apparently-typing/internal/views"
+
+templ Home() {
+	@views.Layout("Demos") {
+		<div class="max-w-5xl text-base-content prose lg:prose-xl my-4">
+			<p>
+				This is a small collection of experiments using datastar.
+				Please navigate to each one below
+				<ul><li><a href="/checks"></a></li></ul>
+			</p>
+			<p>
+				Please note that these apps are hosted on a single container on a small personal VPS instance so which may be prone to being hugged to death.
+				<details>
+					<summary>Deployment Details</summary>
+					<table>
+						<tr><td>Host Provider</td><td><a href="https://www.hostinger.com" target="_blank">Hostinger</a></td></tr>
+						<tr><td>Deployment CPUs</td><td>0.5 Cores</td></tr>
+						<tr><td>Allocated Memory</td><td>500MB</td></tr>
+						<tr><td>Host Location</td><td>Malaysia</td></tr>
+					</table>
+				</details>
+			</p>
+		</div>
+	}
+}

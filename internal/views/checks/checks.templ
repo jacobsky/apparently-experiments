@@ -1,0 +1,23 @@
+package checks
+
+import "apparently-typing/internal/views"
+import "fmt"
+
+templ Checkbox(id string, state bool) {
+	// TODO: Datastar markup
+	<input class="checkbox checkbox-xs" type="checkbox" id={ id } data-on:click={ fmt.Sprintf("@post('/checks/%v'", id) } value={ state }/>
+}
+
+templ Checkboxes(state *[X_DIMENSION][Y_DIMENSION]bool, width, height uint) {
+	@views.Layout("Checkboxes") {
+		<div class="grid auto-cols-min gap-0" data-init="@get('/checks')">
+			for y := range height {
+				<div class="flex flex-nowrap">
+					for x := range width {
+						@Checkbox(fmt.Sprintf("%v-%v", x, y), state[x][y])
+					}
+				</div>
+			}
+		</div>
+	}
+}
