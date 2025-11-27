@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -38,7 +40,9 @@ func gracefulShutdown(apiServer *http.Server, done chan bool) {
 }
 
 func main() {
-
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+	slog.SetLogLoggerLevel(slog.LevelDebug)
 	server := server.NewServer()
 
 	// Create a done channel to signal when the shutdown is complete
