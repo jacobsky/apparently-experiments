@@ -1,0 +1,27 @@
+package anim
+
+import (
+	"apparently-typing/internal/views"
+	"fmt"
+)
+
+templ AnimationFragment(anim *AnimationState) {
+	<svg id="animation-frag" width="200" height="200">
+		<circle
+			cx={ anim.x_pos }
+			cy={ anim.y_pos }
+			r="30"
+			fill={ fmt.Sprintf("rgb(%v,%v,%v)", anim.red, anim.green, anim.blue) }
+		></circle>
+	</svg>
+}
+
+templ Animation(anim *AnimationState) {
+	@views.Layout("Animation") {
+		<p class="text-3xl">Server Driven SVG Animation </p>
+		<p class="text-xl">A slightly excessive example of how to drive 30 FPS SVG animation from the server. This is less applicable directly, but it is possible.</p>
+		<div class="flex justify-center" data-init="@get('/anim?listen', {openWhenHidden: true})">
+			@AnimationFragment(anim)
+		</div>
+	}
+}
