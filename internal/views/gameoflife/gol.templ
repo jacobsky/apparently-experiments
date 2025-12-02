@@ -1,0 +1,40 @@
+package gameoflife
+
+import "fmt"
+import "apparently-typing/internal/views"
+
+templ Cell(id string, alive bool) {
+	if alive {
+		<div id={ id } class="size-[10px] bg-primary border border-bg-base-300"></div>
+	} else {
+		<div id={ id } class="size-[10px] bg-base-100 border border-bg-base-300"></div>
+	}
+}
+
+templ GameOfLifeFragment(board *GameBoard) {
+	<div
+		id="gameoflife"
+		class="grid grid-cols-50 grid-rows-50"
+		data-on:pointerdown="@post('/gameoflife?id='+evt.target.id)"
+	>
+		for y := range boardSizeY {
+			for x := range boardSizeX {
+				@Cell(fmt.Sprintf("%v-%v", x, y), board.board[x][y])
+			}
+		}
+	</div>
+}
+
+templ GameOfLife(board *GameBoard) {
+	@views.Layout("Game of Life") {
+		<h1>Conway's Game Of Life (Multiplayer)</h1>
+		<p>The following is a sample of Conway's Game of Life and can be played Multiplayer. The game will start with a randomized initial state and tick once per second there after. You can still flip tiles freely as after it starts.</p>
+		<p>The simulation updates every { tickTime } milliseconds. Click any of the boxes you wish. The following is a sample of Conway's Game of Life and can be played Multiplayer. The game will start with a randomized initial state and tick once per second there after. You can still flip tiles freely as after it starts.</p>
+		<div
+			class="flex flex-nowrap justify-center"
+			data-init="@get('/gameoflife?listen')"
+		>
+			@GameOfLifeFragment(board)
+		</div>
+	}
+}
