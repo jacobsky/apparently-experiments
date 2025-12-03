@@ -28,11 +28,27 @@ templ GameOfLifeFragment(board *GameBoard) {
 templ GameOfLife(board *GameBoard) {
 	@views.Layout("Game of Life") {
 		<h1>Conway's Game Of Life (Multiplayer)</h1>
-		<p>The following is a sample of Conway's Game of Life and can be played Multiplayer. The game will start with a randomized initial state and tick once per second there after. You can still flip tiles freely as after it starts.</p>
-		<p>The simulation updates every { tickTime } milliseconds. Click any of the boxes you wish. The following is a sample of Conway's Game of Life and can be played Multiplayer. The game will start with a randomized initial state and tick once per second there after. You can still flip tiles freely as after it starts.</p>
+		<p>The following is a sample of Conway's Game of Life and can be played Multiplayer.</p>
+		<p>The game will start with a randomized initial state and tick once per second there after. You can still flip tiles freely as after it starts.</p>
+		<p>The simulation periodically updates based on activity and overall population.</p>
+		<div class="divide"></div>
+		<div class="flex flex-nowrap">
+			<p>Simulation Tick Rate</p>
+			<progress
+				class="progress w-50"
+				data-signals:time_to_update="0"
+				data-signals:remaining_progress="0"
+				data-bind:time_to_update
+				data-bind:remaining_progress
+				data-init="@get('/gameoflife?timer', {openWhenHidden: true})"
+				data-attr:value="$remaining_progress"
+				max="100"
+			></progress>
+			<p data-text="$time_to_update"></p>
+		</div>
 		<div
 			class="flex flex-nowrap justify-center"
-			data-init="@get('/gameoflife?listen')"
+			data-init="@get('/gameoflife?listen', {openWhenHidden:true})"
 		>
 			@GameOfLifeFragment(board)
 		</div>

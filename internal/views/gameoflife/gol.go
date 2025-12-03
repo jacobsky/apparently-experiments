@@ -14,10 +14,24 @@ import (
 	"github.com/starfederation/datastar-go/datastar"
 )
 
-const tickTime = 2000
-const channelBuffer = 10
-const boardSizeX = 50
-const boardSizeY = 50
+// Note: Most of these could be environment variables if configurability was a requirement.
+// As a demo/prototype, configurability is not a requirement.
+const (
+	// Helper Constants for tick management
+	tickDurationMS = 500
+	ticksPerSecond = 1000 / tickDurationMS
+	// Tick rates are for various conditions to save resources
+	// on the simulation as well as preserve the state when no one is watching.
+	activeTickRate        = 1
+	idleTickRate          = 30 * ticksPerSecond
+	lowPopulationTickRate = 5 * ticksPerSecond
+	// Channel buffers to ensure that there are no interruptions when multiple sessions ocnnect at once.
+	channelBuffer = 10
+	// Due to the exponential increase in the complexity of this potential simulation, these are hard caps for the demo
+	lowPopulation = 25
+	boardSizeX    = 50
+	boardSizeY    = 50
+)
 
 type TileUpdate struct {
 	X     uint
@@ -81,30 +95,39 @@ func NewRandomGameBoard() GameBoard {
 }
 
 type Handler struct {
-	rw    sync.RWMutex
-	tx    chan *TileUpdate
-	rx    []chan *GameBoard
-	addRx chan chan *GameBoard
-	delRx chan (<-chan *GameBoard)
-	board GameBoard
+	tx            chan *TileUpdate
+	rx            []chan *GameBoard
+	addRx         chan chan *GameBoard
+	delRx         chan (<-chan *GameBoard)
+	board         GameBoard
+	ticksToUpdate uint
+	tickrate      uint
 }
 
 func NewHandler() http.Handler {
 	h := &Handler{
-		tx:    make(chan *TileUpdate, channelBuffer),
-		rx:    make([]chan *GameBoard, 0),
-		addRx: make(chan chan *GameBoard, channelBuffer),
-		delRx: make(chan (<-chan *GameBoard), channelBuffer),
-		board: NewRandomGameBoard(),
+		tx:            make(chan *TileUpdate, channelBuffer),
+		rx:            make([]chan *GameBoard, 0),
+		addRx:         make(chan chan *GameBoard, channelBuffer),
+		delRx:         make(chan (<-chan *GameBoard), channelBuffer),
+		board:         NewRandomGameBoard(),
+		ticksToUpdate: idleTickRate,
+		tickrate:      idleTickRate,
 	}
 	go h.serve()
 	return h
 }
 
-func (h *Handler) tickGame() {
+func (h *Handler) setTickRate(tickrate uint) {
+	h.ticksToUpdate = tickrate
+	h.tickrate = tickrate
+}
+
+func (h *Handler) tickGame() int {
+	alive := 0
 	// Create the next frame
 	newBoard := [boardSizeX][boardSizeY]bool{}
-	h.rw.RLock()
+	h.board.rw.RLock()
 
 	for x := range boardSizeX {
 		for y := range boardSizeY {
@@ -128,9 +151,6 @@ func (h *Handler) tickGame() {
 			if y > 0 && h.board.board[x][y-1] {
 				numNeighbors++
 			}
-			if h.board.board[x][y] {
-				numNeighbors++
-			}
 			if y < boardSizeY-1 && h.board.board[x][y+1] {
 				numNeighbors++
 			}
@@ -152,20 +172,21 @@ func (h *Handler) tickGame() {
 			// In all other quanitites, it dies (false)
 			if (newBoard[x][y] && numNeighbors == 2) || numNeighbors == 3 {
 				newBoard[x][y] = true
+				alive++
 			} else {
 				newBoard[x][y] = false
 			}
 		}
 	}
-	h.rw.RUnlock()
+	h.board.rw.RUnlock()
 
 	h.board.SetBoard(newBoard)
+	return alive
 }
 
 func (h *Handler) serve() {
 	slog.Info("Updater worker started")
-	ticker := time.NewTicker(tickTime * time.Millisecond)
-
+	ticker := time.NewTicker(tickDurationMS * time.Millisecond)
 	for {
 		select {
 		case update := <-h.tx:
@@ -175,18 +196,38 @@ func (h *Handler) serve() {
 			}
 
 		case <-ticker.C:
+			// Tick the counter until next update.
+			if h.ticksToUpdate > 0 {
+				slog.Info("Ticking the siulation")
+				h.ticksToUpdate--
+				continue
+			}
+			// If we have no listeners, don't bother actually ticking the simulation and set the time to update to 30 seconds.
+			if len(h.rx) == 0 {
+				slog.Info("no active connections skipping ticking will tick again in 30 seconds")
+				h.setTickRate(idleTickRate)
+				continue
+			} else {
+				h.setTickRate(activeTickRate)
+			}
 			slog.Info("game update")
-			h.tickGame()
+			alive := h.tickGame()
 
-			h.rw.RLock()
+			// Special case: _If_ there is a low population force the next tick to be higher than previous to allow users more time to make fun critters.
+			if alive < lowPopulation {
+				h.setTickRate(lowPopulationTickRate)
+			}
+			h.board.rw.RLock()
 
 			for _, rx := range h.rx {
 				rx <- &h.board
 			}
-			h.rw.RUnlock()
+			h.board.rw.RUnlock()
 
 		case channel := <-h.addRx:
 			slog.Info("Opening channel")
+			// If we were previously inactive and now are receiving our first connection
+			// Give the simulation 5 seconds to start by using the lowPopulationTickRate
 			h.rx = append(h.rx, channel)
 
 		case channel := <-h.delRx:
@@ -211,9 +252,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		if r.URL.Query().Has("listen") {
 			h.listen(w, r)
+		}
+		if r.URL.Query().Has("timer") {
+			h.listenTimer(w, r)
 		} else {
-			h.rw.RLock()
-			defer h.rw.RUnlock()
+			h.board.rw.RLock()
+			defer h.board.rw.RUnlock()
 			templ.Handler(GameOfLife(&h.board)).ServeHTTP(w, r)
 		}
 
@@ -223,8 +267,44 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func (h *Handler) listenTimer(w http.ResponseWriter, r *http.Request) {
+	type GameOfLifeSignals struct {
+		TimeToUpdate      float32 `json:"time_to_update"`
+		RemainingProgress int     `json:"remaining_progress"`
+	}
+
+	var store GameOfLifeSignals
+	err := datastar.ReadSignals(r, &store)
+	sse := datastar.NewSSE(w, r)
+	if err != nil {
+		_ = sse.ConsoleError(err)
+	}
+
+	err = sse.MarshalAndPatchSignals(store)
+	if err != nil {
+		_ = sse.ConsoleError(err)
+	}
+
+	ticker := time.NewTicker(tickDurationMS * ticksPerSecond * time.Millisecond)
+	for {
+		select {
+		case <-sse.Context().Done():
+			return
+		case <-ticker.C:
+			store.TimeToUpdate = float32(h.ticksToUpdate / ticksPerSecond)
+
+			// Remaining progress is a percentage which requires the magic 100
+			store.RemainingProgress = int(100 * (h.tickrate - h.ticksToUpdate) / h.tickrate)
+			err = sse.MarshalAndPatchSignals(store)
+			if err != nil {
+				_ = sse.ConsoleError(err)
+			}
+		}
+	}
+}
+
 func (h *Handler) listen(w http.ResponseWriter, r *http.Request) {
-	slog.Info("game of lifelisten()")
+	slog.Info("game of life listen()")
 	sse := datastar.NewSSE(w, r)
 
 	err := sse.PatchElementTempl(GameOfLifeFragment(&h.board))
@@ -234,12 +314,12 @@ func (h *Handler) listen(w http.ResponseWriter, r *http.Request) {
 	}
 	listener := make(chan *GameBoard)
 	h.addRx <- listener
-	slog.Info("game of lifelistener connected")
+	slog.Info("game of life listener connected")
 	// Keep the context open until the connection closes (detectable via the request context)
 	for {
 		select {
 		case <-sse.Context().Done():
-			slog.Info("game of lifelistener disconnected")
+			slog.Info("game of life listener disconnected")
 			h.delRx <- listener
 			return
 		case msg := <-listener:
