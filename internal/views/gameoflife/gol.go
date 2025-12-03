@@ -23,7 +23,7 @@ const (
 	// Tick rates are for various conditions to save resources
 	// on the simulation as well as preserve the state when no one is watching.
 	activeTickRate        = 1
-	idleTickRate          = 30 * ticksPerSecond
+	idleTickRate          = 15 * ticksPerSecond
 	lowPopulationTickRate = 5 * ticksPerSecond
 	// Channel buffers to ensure that there are no interruptions when multiple sessions ocnnect at once.
 	channelBuffer = 10
