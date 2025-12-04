@@ -1,11 +1,11 @@
 package server
 
 import (
-	"apparently-typing/internal/views/anim"
-	"apparently-typing/internal/views/checks"
-	"apparently-typing/internal/views/gameoflife"
-	"apparently-typing/internal/views/health"
-	"apparently-typing/internal/views/home"
+	"apparently-experiments/internal/views/anim"
+	"apparently-experiments/internal/views/checks"
+	"apparently-experiments/internal/views/gameoflife"
+	"apparently-experiments/internal/views/health"
+	"apparently-experiments/internal/views/home"
 	"net/http"
 )
 

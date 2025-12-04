@@ -1,5 +1,7 @@
 @import "tailwindcss" source("internal");
 
+@source "submodules/apparently-typing/pkg";
+
 @plugin "@tailwindcss/typography";
 @plugin "daisyui" {
     themes: cupcake, night --default;

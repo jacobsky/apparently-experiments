@@ -198,7 +198,6 @@ func (h *Handler) serve() {
 		case <-ticker.C:
 			// Tick the counter until next update.
 			if h.ticksToUpdate > 0 {
-				slog.Info("Ticking the siulation")
 				h.ticksToUpdate--
 				continue
 			}
@@ -324,8 +323,11 @@ func (h *Handler) listen(w http.ResponseWriter, r *http.Request) {
 			return
 		case msg := <-listener:
 			slog.Info("Update sending")
-			err := sse.PatchElementTempl(GameOfLifeFragment(msg))
-			if err != nil {
+			if sse.Context().Err() != nil {
+				slog.Error("Context error", "err", err)
+				return
+			}
+			if err := sse.PatchElementTempl(GameOfLifeFragment(msg)); err != nil {
 				slog.Error("Error occurred when patching", "error", err)
 			}
 		}

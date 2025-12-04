@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"apparently-typing/internal/server"
+	"apparently-experiments/internal/server"
 )
 
 func gracefulShutdown(apiServer *http.Server, done chan bool) {
