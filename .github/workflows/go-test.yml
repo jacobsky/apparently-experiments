@@ -6,11 +6,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout with Submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: 'true'
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.22.x'
+          go-version: '1.25.x'
 
       - name: Install templ
         shell: bash
