@@ -29,28 +29,11 @@ templ GameOfLife(board *GameBoard) {
 	@views.Layout("Game of Life") {
 		<h1 class="text-2xl">Conway's Game Of Life (Multiplayer)</h1>
 		<p class="text-lg">The following is a sample of Conway's Game of Life and can be played Multiplayer.</p>
-		<p class="text-lg">The game will start with a randomized initial state and tick once per second there after. You can still flip tiles freely as after it starts.</p>
-		<p class="text-lg">The simulation periodically updates based on activity and overall population.</p>
-		<div class="divider"></div>
-		<p class="text-xl">Simulation Tick Rate</p>
-		<progress
-			class="progress w-50"
-			data-signals:time_to_update="0"
-			data-signals:remaining_progress="0"
-			data-bind:time_to_update
-			data-bind:remaining_progress
-			data-init="@get('/gameoflife?timer')"
-			data-attr:value="$remaining_progress"
-			max="100"
-		></progress>
-		<p
-			class="text-xl"
-			data-text="$time_to_update > 1 ? $time_to_update.toString().concat(' ', 'seconds remaining') : 'Updating...'"
-		></p>
-		<div class="divider"></div>
+		<p class="text-lg">The game will start with a randomized initial state and wil update once persecond there after. </p>
+		<p class="text-lg">Unlike, conways game of life, you may update tiles after which will pause the simulation for approximately 5 seconds.</p>
 		<div
 			class="flex flex-nowrap justify-center"
-			data-init="@get('/gameoflife?listen')"
+			data-init="@get('/gameoflife?listen', {openWhenHidden: true})"
 		>
 			@GameOfLifeFragment(board)
 		</div>

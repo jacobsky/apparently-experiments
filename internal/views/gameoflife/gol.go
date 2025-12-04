@@ -22,15 +22,14 @@ const (
 	ticksPerSecond = 1000 / tickDurationMS
 	// Tick rates are for various conditions to save resources
 	// on the simulation as well as preserve the state when no one is watching.
-	activeTickRate        = 1
-	idleTickRate          = 15 * ticksPerSecond
-	lowPopulationTickRate = 5 * ticksPerSecond
+	activeTickRate = 1
+	idleTickRate   = 30 * ticksPerSecond
+	updateDelay    = 2 * ticksPerSecond
 	// Channel buffers to ensure that there are no interruptions when multiple sessions ocnnect at once.
 	channelBuffer = 10
 	// Due to the exponential increase in the complexity of this potential simulation, these are hard caps for the demo
-	lowPopulation = 25
-	boardSizeX    = 50
-	boardSizeY    = 50
+	boardSizeX = 50
+	boardSizeY = 50
 )
 
 type TileUpdate struct {
@@ -190,6 +189,7 @@ func (h *Handler) serve() {
 	for {
 		select {
 		case update := <-h.tx:
+			h.setTickRate(updateDelay)
 			err := h.board.SetTile(update.X, update.Y, update.Value)
 			if err != nil {
 				slog.Error("update tile error", "error", err)
@@ -210,12 +210,8 @@ func (h *Handler) serve() {
 				h.setTickRate(activeTickRate)
 			}
 			slog.Info("game update")
-			alive := h.tickGame()
+			_ = h.tickGame()
 
-			// Special case: _If_ there is a low population force the next tick to be higher than previous to allow users more time to make fun critters.
-			if alive < lowPopulation {
-				h.setTickRate(lowPopulationTickRate)
-			}
 			h.board.rw.RLock()
 
 			for _, rx := range h.rx {
@@ -225,6 +221,7 @@ func (h *Handler) serve() {
 
 		case channel := <-h.addRx:
 			slog.Info("Opening channel")
+			h.setTickRate(activeTickRate)
 			// If we were previously inactive and now are receiving our first connection
 			// Give the simulation 5 seconds to start by using the lowPopulationTickRate
 			h.rx = append(h.rx, channel)
@@ -251,9 +248,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		if r.URL.Query().Has("listen") {
 			h.listen(w, r)
-		}
-		if r.URL.Query().Has("timer") {
-			h.listenTimer(w, r)
 		} else {
 			h.board.rw.RLock()
 			defer h.board.rw.RUnlock()
@@ -264,42 +258,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 
-}
-
-func (h *Handler) listenTimer(w http.ResponseWriter, r *http.Request) {
-	type GameOfLifeSignals struct {
-		TimeToUpdate      float32 `json:"time_to_update"`
-		RemainingProgress int     `json:"remaining_progress"`
-	}
-
-	var store GameOfLifeSignals
-	err := datastar.ReadSignals(r, &store)
-	sse := datastar.NewSSE(w, r)
-	if err != nil {
-		_ = sse.ConsoleError(err)
-	}
-
-	err = sse.MarshalAndPatchSignals(store)
-	if err != nil {
-		_ = sse.ConsoleError(err)
-	}
-
-	ticker := time.NewTicker(tickDurationMS * ticksPerSecond * time.Millisecond)
-	for {
-		select {
-		case <-sse.Context().Done():
-			return
-		case <-ticker.C:
-			store.TimeToUpdate = float32(h.ticksToUpdate / ticksPerSecond)
-
-			// Remaining progress is a percentage which requires the magic 100
-			store.RemainingProgress = int(100 * (h.tickrate - h.ticksToUpdate) / h.tickrate)
-			err = sse.MarshalAndPatchSignals(store)
-			if err != nil {
-				_ = sse.ConsoleError(err)
-			}
-		}
-	}
 }
 
 func (h *Handler) listen(w http.ResponseWriter, r *http.Request) {
