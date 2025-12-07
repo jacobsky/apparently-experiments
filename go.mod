@@ -3,8 +3,8 @@ module apparently-experiments
 go 1.25.2
 
 require (
-	github.com/jacobsky/apparently-typing v0.0.0
 	github.com/a-h/templ v0.3.960
+	github.com/jacobsky/apparently-typing v0.0.0
 	github.com/joho/godotenv v1.5.1
 	github.com/starfederation/datastar-go v1.0.3
 )
