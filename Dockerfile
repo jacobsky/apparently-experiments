@@ -4,7 +4,6 @@ RUN apk add --no-cache curl libstdc++ libgcc npm
 WORKDIR /app
 
 COPY go.mod go.sum ./
-RUN go mod download
 
 COPY . .
 RUN go install github.com/a-h/templ/cmd/templ@latest && \
@@ -19,7 +18,7 @@ RUN go build -o main cmd/site/main.go
 FROM alpine:3.20.1 AS prod
 WORKDIR /app
 COPY --from=build /app/main /app/main
-EXPOSE ${PORT}
+EXPOSE 80
 CMD ["./main"]
 
 
