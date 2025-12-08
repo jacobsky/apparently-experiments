@@ -11,8 +11,10 @@ import (
 	"github.com/starfederation/datastar-go/datastar"
 )
 
-const channelBuffer = 10
-const ticksPerSecond = 30
+const (
+	channelBuffer  = 10
+	ticksPerSecond = 30
+)
 
 type AnimationState struct {
 	tick  float64
@@ -68,11 +70,16 @@ func (h *Handler) tickAnimation() {
 
 func (h *Handler) serve() {
 	slog.Info("Updater worker started")
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(time.Second / ticksPerSecond)
 
 	for {
 		select {
 		case <-ticker.C:
+			// Pause the animation if no one is watching
+			if len(h.rx) == 0 {
+				ticker.Stop()
+				continue
+			}
 			h.tickAnimation()
 
 			h.rw.RLock()
@@ -84,6 +91,10 @@ func (h *Handler) serve() {
 
 		case channel := <-h.addRx:
 			slog.Info("Opening channel")
+			// If this is the first viewer, start the animation.
+			if len(h.rx) == 0 {
+				ticker.Reset(time.Second / ticksPerSecond)
+			}
 			h.rx = append(h.rx, channel)
 
 		case channel := <-h.delRx:
