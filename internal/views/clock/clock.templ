@@ -1,0 +1,24 @@
+package clock
+
+import "apparently-experiments/internal/views"
+import "time"
+
+templ ClockTitle() {
+	<title>Clock: { time.Now().Format("15:04:05") } </title>
+}
+
+templ ClockFragment(ticks int) {
+	<div id="clock" class="grid auto-cols-min gap-0" data-init="@get('/clock?listen=true')">
+		<table class="table">
+			<tr><th>Current Time </th> <td>{ time.Now().Format("15:04:05") } </td> </tr>
+			<tr><th>Current Date </th> <td>{ time.Now().Format("2006-01-02") } </td> </tr>
+			<tr><th>Server Ticks </th> <td>{ ticks } </td> </tr>
+		</table>
+	</div>
+}
+
+templ Clock() {
+	@views.Layout("Clock") {
+		@ClockFragment(0)
+	}
+}
