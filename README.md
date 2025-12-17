@@ -4,5 +4,7 @@ This app functions as a series of smaller datastar demos. The code for each of t
 
 ## Included demos
 
-- [ ] Synchronized Checkboxes
-- [ ] Server Driven Animations
+- [x] Synchronized Checkboxes
+- [x] Server Driven Animations
+- [x] Synchronized Clock
+- [x] Game of Life

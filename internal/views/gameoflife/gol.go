@@ -1,6 +1,7 @@
 package gameoflife
 
 import (
+	"apparently-experiments/internal/shared"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -184,7 +185,7 @@ func (h *Handler) tickGame() int {
 }
 
 func (h *Handler) serve() {
-	slog.Info("Updater worker started")
+	slog.Info("Game Of Life updater worker started")
 	ticker := time.NewTicker(tickDurationMS * time.Millisecond)
 	for {
 		select {
@@ -203,13 +204,13 @@ func (h *Handler) serve() {
 			}
 			// If we have no listeners, don't bother actually ticking the simulation and set the time to update to 30 seconds.
 			if len(h.rx) == 0 {
-				slog.Info("no active connections skipping ticking will tick again in 30 seconds")
+				slog.Debug("no active connections skipping ticking will tick again in 30 seconds")
 				h.setTickRate(idleTickRate)
 				continue
 			} else {
 				h.setTickRate(activeTickRate)
 			}
-			slog.Info("game update")
+			slog.Debug("game update")
 			_ = h.tickGame()
 
 			h.board.rw.RLock()
@@ -220,14 +221,14 @@ func (h *Handler) serve() {
 			h.board.rw.RUnlock()
 
 		case channel := <-h.addRx:
-			slog.Info("Opening channel")
+			slog.Debug("Opening channel")
 			h.setTickRate(activeTickRate)
 			// If we were previously inactive and now are receiving our first connection
 			// Give the simulation 5 seconds to start by using the lowPopulationTickRate
 			h.rx = append(h.rx, channel)
 
 		case channel := <-h.delRx:
-			slog.Info("Closing channel")
+			slog.Debug("Closing channel")
 			for i, ch := range h.rx {
 				if ch == channel {
 					h.rx[i] = h.rx[len(h.rx)-1]
@@ -261,7 +262,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listen(w http.ResponseWriter, r *http.Request) {
-	slog.Info("game of life listen()")
+	requestId := r.Header.Get(shared.RequestIDHeader)
+	slog.Debug("game of life listen()", "request_id", requestId)
 	sse := datastar.NewSSE(w, r)
 
 	err := sse.PatchElementTempl(GameOfLifeFragment(&h.board))
@@ -271,16 +273,16 @@ func (h *Handler) listen(w http.ResponseWriter, r *http.Request) {
 	}
 	listener := make(chan *GameBoard)
 	h.addRx <- listener
-	slog.Info("game of life listener connected")
+	slog.Debug("game of life listener connected", "request_id", requestId)
 	// Keep the context open until the connection closes (detectable via the request context)
 	for {
 		select {
 		case <-sse.Context().Done():
-			slog.Info("game of life listener disconnected")
+			slog.Debug("game of life listener disconnected", "request_id", requestId)
 			h.delRx <- listener
 			return
 		case msg := <-listener:
-			slog.Info("Update sending")
+			slog.Debug("Update sending", "request_id", requestId)
 			if sse.Context().Err() != nil {
 				slog.Error("Context error", "err", err)
 				return
@@ -293,7 +295,7 @@ func (h *Handler) listen(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) fliptile(w http.ResponseWriter, r *http.Request) {
-	slog.Info("fliptile")
+	slog.Debug("game of life fliptile()", "request_id", r.Header.Get(shared.RequestIDHeader))
 	sse := datastar.NewSSE(w, r)
 	id := r.URL.Query().Get("id")
 

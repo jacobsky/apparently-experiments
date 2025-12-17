@@ -1,6 +1,7 @@
 package anim
 
 import (
+	"apparently-experiments/internal/shared"
 	"log/slog"
 	"math"
 	"net/http"
@@ -69,7 +70,7 @@ func (h *Handler) tickAnimation() {
 }
 
 func (h *Handler) serve() {
-	slog.Info("Updater worker started")
+	slog.Info("Animation handler update worker start")
 	ticker := time.NewTicker(time.Second / ticksPerSecond)
 
 	for {
@@ -90,7 +91,7 @@ func (h *Handler) serve() {
 			h.rw.RUnlock()
 
 		case channel := <-h.addRx:
-			slog.Info("Opening channel")
+			slog.Debug("Opening channel")
 			// If this is the first viewer, start the animation.
 			if len(h.rx) == 0 {
 				ticker.Reset(time.Second / ticksPerSecond)
@@ -98,7 +99,7 @@ func (h *Handler) serve() {
 			h.rx = append(h.rx, channel)
 
 		case channel := <-h.delRx:
-			slog.Info("Closing channel")
+			slog.Debug("Closing channel")
 			for i, ch := range h.rx {
 				if ch == channel {
 					h.rx[i] = h.rx[len(h.rx)-1]
@@ -127,7 +128,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listen(w http.ResponseWriter, r *http.Request) {
-	slog.Info("Animation listen()")
+	requestId := r.Context().Value(shared.RequestIDHeader)
+	slog.Debug("Animation listen()", "request_id", requestId)
 	sse := datastar.NewSSE(w, r)
 
 	err := sse.PatchElementTempl(AnimationFragment(&h.anim))
@@ -137,18 +139,20 @@ func (h *Handler) listen(w http.ResponseWriter, r *http.Request) {
 	}
 	listener := make(chan *AnimationState)
 	h.addRx <- listener
-	slog.Info("Animation listener connected")
+	slog.Debug("Animation listener connected", "request_id", requestId)
 	// Keep the context open until the connection closes (detectable via the request context)
 	for {
 		select {
+
 		case <-sse.Context().Done():
-			slog.Info("Animation listener disconnected")
+			slog.Debug("Animation listener disconnected", "request_id", requestId)
 			h.delRx <- listener
 			return
+
 		case msg := <-listener:
 			err := sse.PatchElementTempl(AnimationFragment(msg))
 			if err != nil {
-				slog.Error("Error occurred when patching", "error", err)
+				slog.Error("Error occurred when patching", "error", err, "request_id", requestId)
 			}
 		}
 	}

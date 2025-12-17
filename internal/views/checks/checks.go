@@ -1,6 +1,7 @@
 package checks
 
 import (
+	"apparently-experiments/internal/shared"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -40,7 +41,7 @@ func (sm *SyncMap) Get(x, y uint) bool {
 	return sm.values[x][y]
 }
 func (sm *SyncMap) Set(x, y uint, value bool) {
-	slog.Info("Update message received adding to broadcasting", "x", x, "y", y, "value", value)
+	slog.Debug("Update message received adding to broadcasting", "x", x, "y", y, "value", value)
 	sm.rw.Lock()
 	defer sm.rw.Unlock()
 	sm.values[x][y] = value
@@ -73,22 +74,22 @@ func NewHandler() http.Handler {
 }
 
 func (h *Handler) serve() {
-	slog.Info("Updater worker started")
+	slog.Debug("Checks updater worker started")
 	for {
 		select {
 		case msg := <-h.tx:
-			slog.Info("Update message received adding to broadcasting", "x", msg.X, "y", msg.Y, "value", msg.Value)
+			slog.Debug("Update message received adding to broadcasting", "x", msg.X, "y", msg.Y, "value", msg.Value)
 			h.checkboxes.Set(msg.X, msg.Y, msg.Value)
 			for _, rx := range h.rx {
 				rx <- msg
 			}
 
 		case channel := <-h.addRx:
-			slog.Info("Opening channel")
+			slog.Debug("Opening channel")
 			h.rx = append(h.rx, channel)
 
 		case channel := <-h.delRx:
-			slog.Info("Closing channel")
+			slog.Debug("Closing channel")
 			for i, ch := range h.rx {
 				if ch == channel {
 					h.rx[i] = h.rx[len(h.rx)-1]
@@ -119,7 +120,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
-	slog.Info("Checkbox update sent")
+	slog.Debug("Checkbox update sent")
 	sse := datastar.NewSSE(w, r)
 
 	x, err := strconv.Atoi(r.URL.Query().Get(URI_PARAM_X))
@@ -144,12 +145,13 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		Y:     uint(y),
 		Value: state,
 	}
-	slog.Info("message injested", "message", msg)
+	slog.Debug("message injested", "message", msg)
 	h.tx <- msg
 }
 
 func (h *Handler) listen(w http.ResponseWriter, r *http.Request) {
-	slog.Info("Checkbox listen()")
+	requestId := r.Context().Value(shared.RequestIDHeader)
+	slog.Debug("Checkbox listen()", "request_id", requestId)
 	sse := datastar.NewSSE(w, r)
 
 	err := sse.PatchElementTempl(CheckboxesFragment(&h.checkboxes, X_DIMENSION, Y_DIMENSION))
@@ -159,12 +161,12 @@ func (h *Handler) listen(w http.ResponseWriter, r *http.Request) {
 	}
 	listener := make(chan Message)
 	h.addRx <- listener
-	slog.Info("Checkbox listener connected")
+	slog.Debug("Checkbox listener connected", "request_id", requestId)
 	// Keep the context open until the connection closes (detectable via the request context)
 	for {
 		select {
 		case <-sse.Context().Done():
-			slog.Info("Checkbox listener disconnected")
+			slog.Debug("Checkbox listener disconnected", "request_id", requestId)
 			h.delRx <- listener
 			return
 		case msg := <-listener:
