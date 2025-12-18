@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/justinas/alice"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -30,29 +31,30 @@ var totalRequests = promauto.NewCounter(prometheus.CounterOpts{
 })
 
 func (s *Server) RegisterRoutes() http.Handler {
+	middleware := alice.New(s.addRequestHeaderMiddleware, s.observabilityMiddleware, s.corsMiddleware)
 	mux := http.NewServeMux()
-
 	// Register routes
+	health := health.NewHandler()
+
 	fileServer := http.FileServer(http.FS(Files))
 	mux.Handle("/assets/", fileServer)
+	mux.Handle("/healthcheck", health)
+	mux.Handle("/metrics", promhttp.Handler())
 
-	health := health.NewHandler()
 	home := home.NewHandler()
 	checks := checks.NewHandler()
 	clock := clock.NewHandler()
 	anim := anim.NewHandler()
 	gameoflife := gameoflife.NewHandler()
 
-	mux.Handle("/", home)
-	mux.Handle("/healthcheck", health)
-	mux.Handle("/checks", checks)
-	mux.Handle("/checks/{id}", checks)
-	mux.Handle("/clock", clock)
-	mux.Handle("/anim", anim)
-	mux.Handle("/gameoflife", gameoflife)
-	mux.Handle("/metrics", promhttp.Handler())
+	mux.Handle("/", middleware.Then(home))
+	mux.Handle("/checks", middleware.Then(checks))
+	mux.Handle("/checks/{id}", middleware.Then(checks))
+	mux.Handle("/clock", middleware.Then(clock))
+	mux.Handle("/anim", middleware.Then(anim))
+	mux.Handle("/gameoflife", middleware.Then(gameoflife))
 	// Wrap the mux with CORS middleware
-	return s.addRequestHeaderMiddleware(s.observabilityMiddleware(s.corsMiddleware(mux)))
+	return mux
 }
 
 // This middleware is used to add a unique request ID which can be used to help trace details.
@@ -61,7 +63,7 @@ func (s *Server) addRequestHeaderMiddleware(next http.Handler) http.Handler {
 		if r.Header.Get(shared.RequestIDHeader) == "" {
 			requestId := uuid.New().String()
 			r.Header.Set(shared.RequestIDHeader, requestId)
-			ctx := context.WithValue(r.Context(), shared.RequestIDHeader, requestId)
+			ctx := context.WithValue(r.Context(), shared.ContextRequestIDHeader, requestId)
 			r = r.WithContext(ctx)
 		}
 		next.ServeHTTP(w, r)
@@ -86,6 +88,28 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// This is used to get access to the status code and headers returned by the writer
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func wrapResponseWriter(w http.ResponseWriter) *loggingResponseWriter {
+	return &loggingResponseWriter{
+		ResponseWriter: w,
+		status:         http.StatusOK,
+	}
+}
+
+func (rw *loggingResponseWriter) Status() int {
+	return rw.status
+}
+
+func (rw *loggingResponseWriter) WriteHeader(code int) {
+	rw.status = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
 // Logs the request lifecycle as well as the roundtrip time
 // For each request we need to add in some basic prometheus and logging metrics.
 func (s *Server) observabilityMiddleware(next http.Handler) http.Handler {
@@ -93,10 +117,33 @@ func (s *Server) observabilityMiddleware(next http.Handler) http.Handler {
 		requestStart := time.Now()
 		totalRequests.Inc()
 		concurrentRequests.Inc()
+		requestType := "http request"
+		responseCode := http.StatusOK
 
-		next.ServeHTTP(w, r)
+		// Event streams with datastar will hang if the responseWriter is wrapped.
+		if r.Header.Get("Datastar-Request") == "true" {
+			requestType = "datastar request"
+			next.ServeHTTP(w, r)
+			responseCode = http.StatusNoContent
+		} else {
+			responseWriter := wrapResponseWriter(w)
+			next.ServeHTTP(responseWriter, r)
+		}
 
+		slog.Info(requestType,
+			"time",
+			requestStart,
+			"request_id",
+			r.Context().Value(shared.ContextRequestIDHeader),
+			"url",
+			r.URL.Path,
+			"method",
+			r.Method,
+			"status",
+			responseCode,
+			"duration",
+			time.Since(requestStart),
+		)
 		concurrentRequests.Dec()
-		slog.Info("request", "time", requestStart, "request_id", r.Context().Value(shared.RequestIDHeader), "url", r.URL.Path, "duration", time.Since(requestStart))
 	})
 }

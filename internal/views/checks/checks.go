@@ -150,7 +150,7 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listen(w http.ResponseWriter, r *http.Request) {
-	requestId := r.Context().Value(shared.RequestIDHeader)
+	requestId := r.Context().Value(shared.ContextRequestIDHeader)
 	slog.Debug("Checkbox listen()", "request_id", requestId)
 	sse := datastar.NewSSE(w, r)
 
