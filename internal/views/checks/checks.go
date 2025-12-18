@@ -140,6 +140,11 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		_ = sse.ConsoleError(fmt.Errorf("internal error %v", err))
 		return
 	}
+	if uint(x) >= X_DIMENSION || uint(y) >= Y_DIMENSION {
+		_ = sse.ConsoleError(fmt.Errorf("coordinates out of bounds: x=%d, y=%d (max: %d,%d)",
+			x, y, X_DIMENSION-1, Y_DIMENSION-1))
+		return
+	}
 	msg := Message{
 		X:     uint(x),
 		Y:     uint(y),

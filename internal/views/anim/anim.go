@@ -72,11 +72,13 @@ func (h *Handler) tickAnimation() {
 func (h *Handler) serve() {
 	slog.Info("Animation handler update worker start")
 	ticker := time.NewTicker(time.Second / ticksPerSecond)
+	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
 			// Pause the animation if no one is watching
+			// Clean up the ticker during this time.
 			if len(h.rx) == 0 {
 				ticker.Stop()
 				continue

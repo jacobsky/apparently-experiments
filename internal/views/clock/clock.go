@@ -24,6 +24,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		if r.URL.Query().Has(URI_PARAM_LISTEN) {
 			ticker := time.NewTicker(TICKER_DURATION_MS * time.Millisecond)
+			defer ticker.Stop()
+
 			ticks := 1
 			sse := datastar.NewSSE(w, r)
 			for {

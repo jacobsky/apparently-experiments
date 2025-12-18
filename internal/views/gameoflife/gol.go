@@ -187,6 +187,8 @@ func (h *Handler) tickGame() int {
 func (h *Handler) serve() {
 	slog.Info("Game Of Life updater worker started")
 	ticker := time.NewTicker(tickDurationMS * time.Millisecond)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case update := <-h.tx:
@@ -283,7 +285,8 @@ func (h *Handler) listen(w http.ResponseWriter, r *http.Request) {
 			return
 		case msg := <-listener:
 			slog.Debug("Update sending", "request_id", requestId)
-			if sse.Context().Err() != nil {
+
+			if err = sse.Context().Err(); err != nil {
 				slog.Error("Context error", "err", err)
 				return
 			}
@@ -314,6 +317,10 @@ func (h *Handler) fliptile(w http.ResponseWriter, r *http.Request) {
 	y, err := strconv.Atoi(ycomponent)
 	if err != nil {
 		_ = sse.ConsoleError(err)
+		return
+	}
+	if uint(x) >= boardSizeX || uint(y) >= boardSizeY {
+		_ = sse.ConsoleError(fmt.Errorf("Cell position (%v, %v) is out of bounds", x, y))
 		return
 	}
 
