@@ -1,6 +1,11 @@
 package server
 
 import (
+	"context"
+	"log/slog"
+	"net/http"
+	"time"
+
 	"apparently-experiments/internal/shared"
 	"apparently-experiments/internal/views/anim"
 	"apparently-experiments/internal/views/checks"
@@ -8,11 +13,8 @@ import (
 	"apparently-experiments/internal/views/gameoflife"
 	"apparently-experiments/internal/views/health"
 	"apparently-experiments/internal/views/home"
-	"context"
-	"log/slog"
-	"net/http"
-	"time"
 
+	"github.com/felixge/httpsnoop"
 	"github.com/google/uuid"
 	"github.com/justinas/alice"
 	"github.com/prometheus/client_golang/prometheus"
@@ -60,12 +62,14 @@ func (s *Server) RegisterRoutes() http.Handler {
 // This middleware is used to add a unique request ID which can be used to help trace details.
 func (s *Server) addRequestHeaderMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get(shared.RequestIDHeader) == "" {
-			requestId := uuid.New().String()
-			r.Header.Set(shared.RequestIDHeader, requestId)
-			ctx := context.WithValue(r.Context(), shared.ContextRequestIDHeader, requestId)
-			r = r.WithContext(ctx)
+		requestID := r.Header.Get(shared.RequestIDHeader)
+		if requestID == "" {
+			requestID = uuid.New().String()
+			r.Header.Set(shared.RequestIDHeader, requestID)
 		}
+		// Always set the context, even if header already exists
+		ctx := context.WithValue(r.Context(), shared.ContextRequestIDHeader, requestID)
+		r = r.WithContext(ctx)
 		next.ServeHTTP(w, r)
 	})
 }
@@ -88,30 +92,9 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// This is used to get access to the status code and headers returned by the writer
-type loggingResponseWriter struct {
-	http.ResponseWriter
-	status int
-}
-
-func wrapResponseWriter(w http.ResponseWriter) *loggingResponseWriter {
-	return &loggingResponseWriter{
-		ResponseWriter: w,
-		status:         http.StatusOK,
-	}
-}
-
-func (rw *loggingResponseWriter) Status() int {
-	return rw.status
-}
-
-func (rw *loggingResponseWriter) WriteHeader(code int) {
-	rw.status = code
-	rw.ResponseWriter.WriteHeader(code)
-}
-
 // Logs the request lifecycle as well as the roundtrip time
 // For each request we need to add in some basic prometheus and logging metrics.
+// TODO: Split this into a metrics middleware and a log middleware
 func (s *Server) observabilityMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestStart := time.Now()
@@ -119,18 +102,13 @@ func (s *Server) observabilityMiddleware(next http.Handler) http.Handler {
 		concurrentRequests.Inc()
 		requestType := "http request"
 		responseCode := http.StatusOK
+		m := httpsnoop.CaptureMetrics(next, w, r)
 
 		// Event streams with datastar will hang if the responseWriter is wrapped.
 		if r.Header.Get("Datastar-Request") == "true" {
 			requestType = "datastar request"
-			next.ServeHTTP(w, r)
-			responseCode = http.StatusNoContent
-		} else {
-			responseWriter := wrapResponseWriter(w)
-			next.ServeHTTP(responseWriter, r)
 		}
-
-		slog.Info(requestType,
+		logFields := []any{
 			"time",
 			requestStart,
 			"request_id",
@@ -142,8 +120,19 @@ func (s *Server) observabilityMiddleware(next http.Handler) http.Handler {
 			"status",
 			responseCode,
 			"duration",
-			time.Since(requestStart),
-		)
+			m.Duration,
+			"responseSize",
+			m.Written,
+		}
+
+		// Ensure that it is logged as a proper error if it is internal. This is a definite bug.
+		if responseCode >= 500 {
+			slog.Error(requestType, logFields...)
+		} else if responseCode >= 400 {
+			slog.Warn(requestType, logFields...)
+		} else {
+			slog.Info(requestType, logFields...)
+		}
 		concurrentRequests.Dec()
 	})
 }
